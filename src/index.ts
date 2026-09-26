@@ -23,7 +23,7 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import { Config, readConfig, resolveConfig, type ResolvedConfig } from './config.ts'
 import { ThinkBudgetTracker, type Verdict } from './tracker.ts'
 import { reminderSummary, reminderText, systemSectionText } from './policy.ts'
@@ -203,18 +203,14 @@ export function apply(ctx: Context, rawConfig: unknown): void {
 
   // ---- 硬手段（默认关）：越界时把这一步的推理强度降下来 ----
   if (resolved.downgradeReasoningEffort.length > 0) {
-    ctx.on('agent/request', async (
-      payload: { agent?: Agent },
-      next: () => Promise<Record<string, unknown>>,
-    ) => {
+    ctx.on('agent/request', async (payload, next) => {
       const upstream = await next()
-      const agent = payload.agent
-      if (agent === undefined || upstream === undefined || upstream === null) return upstream
-      const state = states.get(agent)
+      const state = states.get(payload.agent)
       if (state === undefined || !state.tracker.shouldDowngrade()) return upstream
       // 档位是否合法由 harness 的 prepareCall() 判定；填错会以
       // UNSUPPORTED_REASONING_EFFORT 终止这一次请求，所以这个开关默认关。
-      return { ...upstream, reasoningEffort: resolved.downgradeReasoningEffort }
+      const downgraded = resolved.downgradeReasoningEffort as LlmCallConfig['reasoningEffort']
+      return { ...upstream, reasoningEffort: downgraded }
     })
   }
 

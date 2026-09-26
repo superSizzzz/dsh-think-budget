@@ -1,0 +1,42 @@
+# 本包自带的补丁层。
+#
+# dsh 的插件管理器（`dsh plugin --profile <name> add <spec>`）装完包之后会读
+# package.json 的 `dsh.bundle.patch`，把这里的内容并入 profile 的补丁层 ——
+# 也就是说这个文件是「装完即生效」的那一半，不需要用户手写 patch 条目。
+#
+# 这里的 name 是**包名**，加载到的是 lib/index.js（编译产物）。
+# 为什么不用 src/index.ts：Node 的类型擦除明确拒绝 node_modules 里的 .ts
+# （ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING），而 dsh plugin 装出来的包
+# 一定落在 node_modules 下。lib/ 是 `npm run build` 的产物，已随仓库提交。
+#
+# 如果你是从源码 checkout 用 file:// 挂载的（见 README 的另一种装法），
+# 该用的是 cordis.think-budget.yml，不是这个文件 —— 那个指向 src/index.ts，
+# 走的是类型擦除，改完源码即热重载。
+- insert:
+    - id: think-budget
+      name: 'dsh-think-budget'
+      config:
+        enabled: true
+
+        # 单步思考超过这个字数、且这一步没写正文 → 提醒一次。
+        maxReasoningCharsPerStep: 4000
+
+        # 连续这么多步没写正文 → 强制要一条结论。
+        maxStepsWithoutConclusion: 3
+
+        # 去空白后多长才算「结论」（挡住「让我看看」这类过渡语）。
+        minConclusionChars: 12
+
+        # 同一种提醒的最小间隔步数、单轮提醒条数上限 —— 防轰炸。
+        cooldownSteps: 2
+        maxRemindersPerTurn: 5
+
+        # 往系统提示里写一段「思考节拍」规则（预防层）。
+        systemPromptSection: true
+
+        # 硬降档：越界时把推理强度换掉。默认关 —— 填了模型不支持的档位
+        # 会让这次请求以 UNSUPPORTED_REASONING_EFFORT 失败。确认过再开。
+        # downgradeReasoningEffort: 'low'
+
+        # 排查用的事件日志（JSONL）。留空则完全不记。
+        # logPath: '<你的路径>/events.jsonl'
