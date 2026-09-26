@@ -1,5 +1,9 @@
 # dsh-think-budget 的补丁层 —— 思考节拍器。
 #
+# ⚠ 本文件里出现的 D:\coding\AgentSkills\dsh-think-budget 是作者本机的插件目录。
+#   用之前把它们全换成你自己的位置（第 1 段的 dsh web 命令、下面 insert 里的
+#   name、以及结尾注释里的 logPath）。
+#
 # 两种用法：
 #   1) 一次性加载（不改 profile 文件）：
 #        dsh web --patch D:\coding\AgentSkills\dsh-think-budget\cordis.think-budget.yml

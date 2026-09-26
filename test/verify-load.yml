@@ -1,6 +1,8 @@
 # 一次性隔离实例的 overlay —— 只用来验证 think-budget 能不能被 dsh 的
 # loader 真的装载（解析 file:// → import .ts → 校验 config → 调 apply）。
 #
+# ⚠ 路径是作者本机的，跑之前换成你自己的插件目录。
+#
 # 用法（起一个不占 3080、不弹浏览器的实例，验证完就杀）：
 #   dsh --profile web --port 3199 --no-open --patch <本文件>
 #
