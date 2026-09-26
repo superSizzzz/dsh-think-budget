@@ -1,0 +1,47 @@
+{
+  "name": "dsh-think-budget",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 插件：给单步思考一个字数预算，连续几步没有可见结论时强制先给结论再继续",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "agent-loop",
+    "reasoning",
+    "think-budget"
+  ],
+  "license": "MIT",
+  "author": "Officer-James",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Officer-James/dsh-think-budget.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Officer-James/dsh-think-budget/issues"
+  },
+  "homepage": "https://github.com/Officer-James/dsh-think-budget#readme",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "link": "node scripts/link-deps.mjs",
+    "test": "node test/tracker.test.mjs && node test/plugin.smoke.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/schemastery": "*"
+  }
+}

@@ -1,0 +1,42 @@
+# dsh-think-budget 的补丁层 —— 思考节拍器。
+#
+# 两种用法：
+#   1) 一次性加载（不改 profile 文件）：
+#        dsh web --patch D:\coding\AgentSkills\dsh-think-budget\cordis.think-budget.yml
+#   2) 常驻（推荐）：把下面 insert 段粘进
+#        ~/.dsh/profiles/web/cordis.patch.yml   （只管 web profile）
+#      或 ~/.dsh/cordis.patch.yml               （home 层，对所有 profile 生效）
+#      两个 profile 都已设 patchReload: live —— 改本文件即热重载，无需重启 dsh。
+#
+# 插件路径必须是 file:// URL。依赖（@deepseek-ai/cordis、dsh-llm、schemastery）
+# 由本目录下的 node_modules junction 提供，指向 ~/.dsh/profiles/node_modules。
+#
+# 配置项的完整说明见 README.md；这里只列一份保守的起步值。
+- insert:
+    - id: think-budget
+      name: 'file:///D:/coding/AgentSkills/dsh-think-budget/src/index.ts'
+      config:
+        enabled: true
+
+        # 单步思考超过这个字数、且这一步没写正文 → 提醒一次。
+        maxReasoningCharsPerStep: 4000
+
+        # 连续这么多步没写正文 → 强制要一条结论。
+        maxStepsWithoutConclusion: 3
+
+        # 去空白后多长才算「结论」（挡住「让我看看」这类过渡语）。
+        minConclusionChars: 12
+
+        # 同一种提醒的最小间隔步数、单轮提醒条数上限 —— 防轰炸。
+        cooldownSteps: 2
+        maxRemindersPerTurn: 5
+
+        # 往系统提示里写一段「思考节拍」规则（预防层）。
+        systemPromptSection: true
+
+        # 硬降档：越界时把推理强度换掉。默认关 —— 填了模型不支持的档位
+        # 会让这次请求以 UNSUPPORTED_REASONING_EFFORT 失败。确认过再开。
+        # downgradeReasoningEffort: 'low'
+
+        # 排查用的事件日志（JSONL）。留空则完全不记。
+        # logPath: 'C:\Users\fhb_j\.dsh\dsh-think-budget\events.jsonl'

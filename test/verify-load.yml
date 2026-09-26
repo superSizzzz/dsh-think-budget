@@ -1,0 +1,18 @@
+# 一次性隔离实例的 overlay —— 只用来验证 think-budget 能不能被 dsh 的
+# loader 真的装载（解析 file:// → import .ts → 校验 config → 调 apply）。
+#
+# 用法（起一个不占 3080、不弹浏览器的实例，验证完就杀）：
+#   dsh --profile web --port 3199 --no-open --patch <本文件>
+#
+# 第一段把 home 层的飞书桥关掉：验证过程不该往真实飞书里发任何消息。
+# 第二段挂上待验证的插件，并把装载留痕写进 test/.verify-applied.jsonl ——
+# 那个文件出现且带 "event":"applied" 行，就证明 apply 真的跑到了。
+- id: feishu-bridge
+  disabled: true
+
+- insert:
+    - id: think-budget
+      name: 'file:///D:/coding/AgentSkills/dsh-think-budget/src/index.ts'
+      config:
+        enabled: true
+        logPath: 'D:\coding\AgentSkills\dsh-think-budget\test\.verify-applied.jsonl'
