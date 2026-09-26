@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
- * 把这份 checkout 的依赖解析接到 dsh 自己的依赖目录上。
+ * 把这份 checkout 的依赖解析接到 dsh 自己的依赖目录上，并且（可选）打印一份
+ * 路径已经填好的 patch 片段。
  *
  * 插件不自己装 `@deepseek-ai/*` —— 那些包由 dsh 提供，package.json 里只
  * 声明 peerDependencies。但 Node 解析 `import '@deepseek-ai/dsh-llm'` 时
  * 需要一个能落地的 node_modules，而 dsh 的 profile 目录下正好有一份完整
- * 的。这个脚本把它链过来，clone 完跑一次即可。
+ * 的。这个脚本把它链过来。
  *
- *   node scripts/link-deps.mjs
+ *   node scripts/link-deps.mjs           接依赖
+ *   node scripts/link-deps.mjs --patch   接依赖，并打印可粘贴的 patch 片段
  *
  * Windows 上建的是 junction（不需要管理员权限，也不占额外磁盘）；其他
  * 平台建目录符号链接。
@@ -20,6 +22,12 @@ import { fileURLToPath } from 'node:url'
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const LINK = join(REPO, 'node_modules')
 const PROBE = join('@deepseek-ai', 'cordis')
+const WANT_PATCH = process.argv.includes('--patch')
+
+/** 插件入口的 file:// URL —— dsh 的 patch 层只认这个形式。 */
+function pluginUrl() {
+  return `file:///${join(REPO, 'src', 'index.ts').replace(/\\/g, '/')}`
+}
 
 /** dsh 的家目录：优先环境变量，否则 ~/.dsh —— 跟 dsh 自己的解析顺序一致。 */
 function dshHome() {
@@ -28,11 +36,32 @@ function dshHome() {
   return join(homedir(), '.dsh')
 }
 
+/** 打印可以直接粘进 cordis.patch.yml 的片段。 */
+function printPatch() {
+  console.log('')
+  console.log('把下面这段追加到补丁文件的末尾（注意是追加，别覆盖原有内容）：')
+  console.log('  ~/.dsh/cordis.patch.yml                → home 层，所有 profile 生效')
+  console.log('  ~/.dsh/profiles/web/cordis.patch.yml   → 只管 web profile')
+  console.log('')
+  console.log('- insert:')
+  console.log('    - id: think-budget')
+  console.log(`      name: '${pluginUrl()}'`)
+  console.log('      config:')
+  console.log('        enabled: true')
+  console.log('        maxReasoningCharsPerStep: 4000')
+  console.log('        maxStepsWithoutConclusion: 3')
+  console.log('')
+  console.log('dsh 的 profile 默认 patchReload: live —— 保存即热重载，不用重启。')
+  console.log('想确认装上了：在 config 里加一行 logPath，然后看那个文件里有没有')
+  console.log('{"event":"applied", ...}。各配置项的含义见 README.md。')
+}
+
 const source = join(dshHome(), 'profiles', 'node_modules')
 
 if (existsSync(join(LINK, PROBE))) {
-  console.log(`✓ node_modules 已可用，能解析 ${PROBE.replace('@deepseek-ai', '@deepseek-ai')}`)
-  console.log(`  插件可以直接加载：file:///${join(REPO, 'src', 'index.ts').replace(/\\/g, '/')}`)
+  console.log(`✓ node_modules 已经可用（能解析 ${PROBE}）`)
+  if (WANT_PATCH) printPatch()
+  else console.log(`  插件路径：${pluginUrl()}\n  加 --patch 可以打印一份可直接粘贴的 patch 片段。`)
   process.exit(0)
 }
 
@@ -62,5 +91,5 @@ try {
 }
 
 console.log(`✓ 已把 node_modules 链到 ${source}`)
-console.log(`  插件路径：file:///${join(REPO, 'src', 'index.ts').replace(/\\/g, '/')}`)
-console.log('  下一步：把 README 里那段 patch 粘进 ~/.dsh/profiles/web/cordis.patch.yml')
+if (WANT_PATCH) printPatch()
+else console.log(`\n  插件路径：${pluginUrl()}\n  加 --patch 可以打印一份可直接粘贴的 patch 片段。`)

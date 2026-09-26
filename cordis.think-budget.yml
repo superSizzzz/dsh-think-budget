@@ -1,24 +1,24 @@
 # dsh-think-budget 的补丁层 —— 思考节拍器。
 #
-# ⚠ 本文件里出现的 D:\coding\AgentSkills\dsh-think-budget 是作者本机的插件目录。
-#   用之前把它们全换成你自己的位置（第 1 段的 dsh web 命令、下面 insert 里的
-#   name、以及结尾注释里的 logPath）。
+# 把 <plugin-dir> 换成你的插件目录（用正斜杠，例如 D:/plugins/dsh-think-budget）。
+# 不知道填什么：在插件目录里跑 `node scripts/link-deps.mjs --patch`，
+# 它会直接打印一份路径已填好的可粘贴片段。
 #
 # 两种用法：
 #   1) 一次性加载（不改 profile 文件）：
-#        dsh web --patch D:\coding\AgentSkills\dsh-think-budget\cordis.think-budget.yml
-#   2) 常驻（推荐）：把下面 insert 段粘进
+#        dsh web --patch <plugin-dir>/cordis.think-budget.yml
+#   2) 常驻（推荐）：把下面 insert 段追加到
 #        ~/.dsh/profiles/web/cordis.patch.yml   （只管 web profile）
 #      或 ~/.dsh/cordis.patch.yml               （home 层，对所有 profile 生效）
-#      两个 profile 都已设 patchReload: live —— 改本文件即热重载，无需重启 dsh。
+#      的末尾。profile 默认开着 patchReload: live —— 改完即热重载，无需重启 dsh。
 #
 # 插件路径必须是 file:// URL。依赖（@deepseek-ai/cordis、dsh-llm、schemastery）
-# 由本目录下的 node_modules junction 提供，指向 ~/.dsh/profiles/node_modules。
+# 由插件目录下的 node_modules 提供，跑一次 `node scripts/link-deps.mjs` 建好它。
 #
 # 配置项的完整说明见 README.md；这里只列一份保守的起步值。
 - insert:
     - id: think-budget
-      name: 'file:///D:/coding/AgentSkills/dsh-think-budget/src/index.ts'
+      name: 'file:///<plugin-dir>/src/index.ts'
       config:
         enabled: true
 
@@ -43,4 +43,4 @@
         # downgradeReasoningEffort: 'low'
 
         # 排查用的事件日志（JSONL）。留空则完全不记。
-        # logPath: 'C:\Users\fhb_j\.dsh\dsh-think-budget\events.jsonl'
+        # logPath: '<plugin-dir>/events.jsonl'

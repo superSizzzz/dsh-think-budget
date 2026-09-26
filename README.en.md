@@ -115,34 +115,73 @@ node scripts/link-deps.mjs
 ```
 
 ```yaml
-# Paste into a profile patch file. Replace the path in `name` with yours.
 - insert:
     - id: think-budget
-      name: 'file:///D:/plugins/dsh-think-budget/src/index.ts'
+      name: 'file:///D:/plugins/dsh-think-budget/src/index.ts'   # <- the line printed in step 2
       config:
         enabled: true
         maxReasoningCharsPerStep: 4000
         maxStepsWithoutConclusion: 3
 ```
 
-Which file you paste into decides the scope:
+Which file you append to decides the scope:
 
 | File | Scope |
 |---|---|
 | `~/.dsh/profiles/web/cordis.patch.yml` | web profile only |
 | `~/.dsh/cordis.patch.yml` | home layer, every profile |
 
-dsh profiles ship with `patchReload: live`, so edits are hot-reloaded — no
-restart needed.
+Append to the end — do not replace what is already in that file. This is an
+insert patch and coexists with existing entries. dsh profiles ship with
+`patchReload: live`, so saving is hot-reloading; no restart needed.
 
 To try it once without touching any profile file, the repo carries a ready-made
-patch layer:
+patch layer (replace `<plugin-dir>` with your actual directory):
 
 ```powershell
-dsh web --patch D:\plugins\dsh-think-budget\cordis.think-budget.yml
+dsh web --patch <plugin-dir>/cordis.think-budget.yml
 ```
 
-(Replace the path inside that file with yours too.)
+## Let an AI agent install it
+
+The block below can be pasted straight to any AI agent that can act on your
+machine (Claude Code, Cursor, another dsh — anything). It is self-contained.
+
+```text
+Install the dsh-think-budget plugin for DeepSeek Harness on this machine.
+
+Repo: https://github.com/superSizzzz/dsh-think-budget
+
+What it is: it gives a single agent step a character budget for reasoning, and
+when several consecutive steps produce no visible conclusion it injects a
+reminder into the session asking for a conclusion before continuing. The plugin
+does exactly two things — adds a system-prompt section and injects a reminder.
+It adds no tools and rewrites no messages.
+
+Steps:
+1. Clone it to a plugin directory of your choosing, e.g. D:\plugins\dsh-think-budget.
+2. In that directory run `node scripts/link-deps.mjs --patch`. It creates a
+   node_modules junction pointing at dsh's own dependency directory (without it
+   the plugin cannot import `@deepseek-ai/*`), then prints a patch fragment with
+   the path already filled in.
+3. Append the printed `- insert:` block to the end of whichever of these files
+   you choose — that decides the scope:
+     ~/.dsh/cordis.patch.yml                -> home layer, every profile
+     ~/.dsh/profiles/web/cordis.patch.yml   -> the web profile only
+   Append it into the YAML array at the end. Do not replace existing plugin entries.
+4. Verify: dsh profiles default to patchReload: live, so saving hot-reloads. To
+   confirm it loaded, add `logPath: '<plugin-dir>/events.jsonl'` to that config
+   and check whether the file contains a {"event":"applied", ...} line.
+
+Notes:
+- This is an insert patch; it coexists with what is already in the patch file.
+  Do not touch other entries.
+- The plugin directory must contain node_modules (created in step 2), or loading fails.
+- No dsh restart is needed; restart only if hot reload does not pick it up.
+- To pause it: set enabled: false in the config. To remove it: delete the insert block.
+- Defaults are "3 consecutive steps without a conclusion" and "4000 reasoning
+  characters per step". Widen to 5 / 8000 if it feels too chatty.
+```
 
 ## Uninstall
 
@@ -151,6 +190,22 @@ keep the code but stop all action. The plugin writes no persistent state, so
 deleting is deleting.
 
 ## Configuration
+
+Configuration lives in the `config:` block of that patch entry — there is no
+separate config file and no settings UI. Save and it takes effect: the hot
+reload re-validates the config and rebuilds the listeners. A bad value fails
+loudly at reload time rather than silently falling back to a default.
+
+```yaml
+- insert:
+    - id: think-budget
+      name: 'file:///<plugin-dir>/src/index.ts'
+      config:
+        # <- the part you tune
+        enabled: true
+        maxReasoningCharsPerStep: 4000
+        maxStepsWithoutConclusion: 3
+```
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -168,6 +223,22 @@ deleting is deleting.
 
 Stricter: `maxStepsWithoutConclusion: 2`, `maxReasoningCharsPerStep: 2500`.
 Looser: `maxStepsWithoutConclusion: 5`, `maxReasoningCharsPerStep: 8000`.
+
+### Confirming it actually took effect
+
+Add `logPath: '<plugin-dir>/events.jsonl'` to the config and save. That file
+immediately gains a line:
+
+```json
+{"at":"2026-01-01T00:00:00.000Z","event":"applied","node":"v26.5.0","headless":false,"config":{"maxReasoningCharsPerStep":4000,...}}
+```
+
+The `config` field is the value that actually took effect. **That line present
+means the plugin loaded and the configuration was read.** Every later reminder
+appends to the same file too (format under Troubleshooting below).
+
+No lines at all means the plugin was not loaded — go back and check the path in
+the patch entry's `name`.
 
 ## Development
 

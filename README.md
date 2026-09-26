@@ -96,10 +96,9 @@ node scripts/link-deps.mjs
 ```
 
 ```yaml
-# 粘进 profile 的补丁文件。name 的路径换成你的实际位置。
 - insert:
     - id: think-budget
-      name: 'file:///D:/plugins/dsh-think-budget/src/index.ts'
+      name: 'file:///D:/plugins/dsh-think-budget/src/index.ts'   # ← 上一步打印出来的那行
       config:
         enabled: true
         maxReasoningCharsPerStep: 4000
@@ -113,15 +112,50 @@ node scripts/link-deps.mjs
 | `~/.dsh/profiles/web/cordis.patch.yml` | 只管 web profile |
 | `~/.dsh/cordis.patch.yml` | home 层，对所有 profile 生效 |
 
-dsh 的 profile 默认开着 `patchReload: live`，改完即热重载，不用重启 dsh。
+追加到末尾即可，别覆盖文件里原有的条目 —— 这是个 insert 补丁，跟已有内容共存。
+dsh 的 profile 默认开着 `patchReload: live`，保存即热重载，不用重启。
 
-想先试一次、不碰任何 profile 文件，仓库里备了一份现成的补丁层：
+想先试一次、不碰任何 profile 文件，仓库里备了一份现成的补丁层（把里面的
+`<plugin-dir>` 换成你的实际目录）：
 
 ```powershell
-dsh web --patch D:\plugins\dsh-think-budget\cordis.think-budget.yml
+dsh web --patch <plugin-dir>/cordis.think-budget.yml
 ```
 
-（里面的路径同样要改成你的实际位置。）
+## 让 AI agent 帮你装
+
+下面这段可以直接粘给任何能操作你机器的 AI agent（Claude Code、Cursor，或者另一个
+dsh 都行）。它是自包含的，不用再补上下文。
+
+```text
+帮我把 dsh-think-budget 这个 dsh 插件装到本机。
+
+仓库：https://github.com/superSizzzz/dsh-think-budget
+
+它是什么：给 dsh 的单步思考一个字数预算，连续几步没有输出可见结论时，往会话里
+注入一条提醒，要求先给结论再继续。插件只做两件事 —— 往系统提示加一段规则、往
+会话注入提醒 —— 不加新工具、不改消息内容。
+
+步骤：
+1. clone 到一个你选定的插件目录，例如 D:\plugins\dsh-think-budget。
+2. 进那个目录跑 `node scripts/link-deps.mjs --patch`。它会在目录里建一个指向 dsh
+   依赖目录的 node_modules junction（不做这步，插件 import `@deepseek-ai/*` 会
+   失败），然后把一份路径已经填好的 patch 片段打印出来。
+3. 把打印出来的 `- insert:` 段追加到下面哪个文件的末尾，由你决定范围：
+     ~/.dsh/cordis.patch.yml                → home 层，所有 profile 生效
+     ~/.dsh/profiles/web/cordis.patch.yml   → 只管 web profile
+   注意是追加到末尾那个 YAML 数组里，不要覆盖原有的插件条目。
+4. 验证：dsh 的 profile 默认 patchReload: live，保存即热重载。想确认装载成功，在
+   那段 config 里加一行 `logPath: '<plugin-dir>/events.jsonl'`，再看那个文件里有
+   没有出现 {"event":"applied", ...} 这一行。
+
+注意：
+- 这是个 insert 补丁，跟补丁文件里已有的内容共存，别动别人的条目。
+- 插件目录下必须存在 node_modules（第 2 步建的），否则加载会失败。
+- 装完不需要重启 dsh；热重载没起来的话再重启。
+- 想临时停手：把 config 里的 enabled 改成 false。彻底卸掉：删掉那个 insert 块。
+- 默认阈值是「连续 3 步无结论」和「单步思考 4000 字」。嫌管得碎就调大到 5 / 8000。
+```
 
 ## 卸掉
 
@@ -129,6 +163,21 @@ dsh web --patch D:\plugins\dsh-think-budget\cordis.think-budget.yml
 保留代码但停手）。插件没写任何持久状态，删掉就是删掉。
 
 ## 配置
+
+配置就写在那段 patch 的 `config:` 里 —— 没有独立配置文件，也没有设置界面。
+改完保存即可：热重载会重新校验配置、重建监听器；字段填错会在重载时报清晰的
+错误，不会静默退回默认值。
+
+```yaml
+- insert:
+    - id: think-budget
+      name: 'file:///<plugin-dir>/src/index.ts'
+      config:
+        # ↓ 要调的就是这一段
+        enabled: true
+        maxReasoningCharsPerStep: 4000
+        maxStepsWithoutConclusion: 3
+```
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -146,6 +195,20 @@ dsh web --patch D:\plugins\dsh-think-budget\cordis.think-budget.yml
 
 想更严：`maxStepsWithoutConclusion: 2`、`maxReasoningCharsPerStep: 2500`。
 想更松：`maxStepsWithoutConclusion: 5`、`maxReasoningCharsPerStep: 8000`。
+
+### 怎么确认它真的生效
+
+配置里加一行 `logPath: '<plugin-dir>/events.jsonl'` 并保存。那个文件会立刻出现
+一行：
+
+```json
+{"at":"2026-01-01T00:00:00.000Z","event":"applied","node":"v26.5.0","headless":false,"config":{"maxReasoningCharsPerStep":4000,...}}
+```
+
+`config` 里就是这次实际生效的值。**有这一行 = 插件被加载了、配置也读进去了。**
+之后每次出手还会往同一个文件追加记录（格式见下面的《排查》）。
+
+一行都没有 = 插件没被加载，回去检查 patch 里 `name` 那个路径。
 
 ## 开发
 

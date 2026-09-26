@@ -15,9 +15,9 @@
  * 就施压 + 可选降推理档」，不是「到点掐断」。真正的硬约束只有
  * `downgradeReasoningEffort`（默认关，见 config.ts）。
  *
- * 加载方式（本地 checkout，profile 已设 patchReload: live，改代码热重载）：
- *   ~/.dsh/profiles/web/cordis.patch.yml 里 insert
- *   `file:///D:/coding/AgentSkills/dsh-think-budget/src/index.ts`
+ * 加载方式（本地 checkout，profile 默认 patchReload: live，改代码即热重载）：
+ *   在 profile 的 cordis.patch.yml 里 insert 一条，name 指向本文件的 file:// URL。
+ *   跑 `node scripts/link-deps.mjs --patch` 会打印一份路径已经填好的片段。
  */
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
