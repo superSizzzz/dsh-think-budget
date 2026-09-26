@@ -11,6 +11,29 @@ The plugin adds no tools, no services, no UI. It does exactly two things: it
 registers a pacing rule in the system prompt, and it injects a reminder into
 the session when the model crosses a line.
 
+## Install it
+
+```powershell
+dsh plugin --profile web add github:superSizzzz/dsh-think-budget
+```
+
+One command, live immediately — dsh reads the package's `dsh.bundle.patch` and
+folds it into the profile. To remove it:
+`dsh plugin --profile web remove dsh-think-budget`.
+
+Change the name after `--profile` to install into another profile; install once
+per profile.
+
+| Item | Requirement |
+|---|---|
+| dsh | ≥ 0.1.7-rc.2 |
+| Node | ≥ 22.6 |
+| profile | Any — web / tui / headless all work; nothing web-specific is used |
+| model | Any — only routes that emit reasoning can trigger the over-budget rule |
+
+To edit the source with instant hot reload instead, see Option 2 under Install
+further down.
+
 ## What it watches
 
 The symptom: after one prompt, the model runs a dozen steps — reasoning and
@@ -184,6 +207,41 @@ patch layer (replace `<plugin-dir>` with your actual directory):
 ```powershell
 dsh web --patch <plugin-dir>/cordis.think-budget.yml
 ```
+
+## What it asks for
+
+No network requests, no commands executed, no new tools, no rewriting your
+messages. Everything it does lands on dsh's existing event surface:
+
+| Action | What exactly | How to turn it off |
+|---|---|---|
+| Read | Count fragment lengths on the stream (`agent/assistant-stream` text / reasoning deltas) | `enabled: false` |
+| Write | Inject one user message into the session (`agent.inject`) | `enabled: false` |
+| Change | Register a system-prompt section (`systemPrompt.section`) | `systemPromptSection: false` |
+| Change | Rewrite one step's reasoning effort (`agent/request` waterfall) | Off by default (`downgradeReasoningEffort` empty) |
+| File | Append one JSONL line to `logPath` | Off by default (`logPath` empty) |
+
+`logPath` is the only thing that touches disk, and it is off by default.
+
+## What it looks like when it fires
+
+This line is the plugin's own ledger entry (written when `logPath` is on), from a
+real session: the model ran three consecutive steps reasoning and calling tools
+with zero visible prose, and the plugin injected a reminder asking for a
+conclusion first.
+
+```json
+{"at":"2026-09-26T09:15:30.056Z","sessionId":"session-befa…","kind":"no-conclusion-streak","streak":3,"reasoningChars":1840,"visibleChars":0,"toolCalls":2}
+```
+
+Later in the same session the other rule fired (single-step reasoning over
+budget) — this time it asked for one sentence of judgement before continuing:
+
+```json
+{"at":"2026-09-26T09:43:38.767Z","sessionId":"session-befa…","kind":"reasoning-over-budget","streak":1,"reasoningChars":4432,"visibleChars":0,"toolCalls":2}
+```
+
+Both took effect immediately: the model's next reply carried prose.
 
 ## Let an AI agent install it
 

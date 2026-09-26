@@ -8,6 +8,26 @@
 插件本身没有任何新工具、新服务、新 UI。它只做两件事：往系统提示里写一段
 规则，以及在模型越界时往会话里塞一条提醒。
 
+## 装它
+
+```powershell
+dsh plugin --profile web add github:superSizzzz/dsh-think-budget
+```
+
+一条命令，装完即生效 —— dsh 会读包里的 `dsh.bundle.patch` 自动并入 profile。
+卸载：`dsh plugin --profile web remove dsh-think-budget`。
+
+换 `--profile` 后面的名字就能装到别的 profile，每个 profile 各装一次。
+
+| 项 | 要求 |
+|---|---|
+| dsh | ≥ 0.1.7-rc.2 |
+| Node | ≥ 22.6 |
+| profile | 不限 —— web / tui / headless 都能装，插件不碰任何 web 专属能力 |
+| 模型 | 不限 —— 只有会产出 reasoning 的路由才会触发「思考超预算」那条规则 |
+
+想改源码、让改动立刻热重载，见下面《装上》里的方式二。
+
 ## 它管的是什么
 
 观察到的现象：一次提问之后，模型连着跑了十来步 —— 每一步都在思考、都在调
@@ -159,6 +179,39 @@ dsh 的 profile 默认开着 `patchReload: live`，保存即热重载，不用�
 ```powershell
 dsh web --patch <plugin-dir>/cordis.think-budget.yml
 ```
+
+## 它要什么权限
+
+没有网络请求，不执行命令，不加新工具，不改写你的消息。全部动作都落在 dsh 现有
+的事件面上：
+
+| 动作 | 具体是什么 | 怎么关 |
+|---|---|---|
+| 读 | 数流里的分片长度（`agent/assistant-stream` 的 text / reasoning delta） | `enabled: false` |
+| 写 | 往会话注入一条 user 消息（`agent.inject`） | `enabled: false` |
+| 改 | 注册一段系统提示（`systemPrompt.section`） | `systemPromptSection: false` |
+| 改 | 改写单步请求的推理强度（`agent/request` waterfall） | 默认就关（`downgradeReasoningEffort` 留空） |
+| 文件 | 往 `logPath` 追加一行 JSONL | 默认就关（`logPath` 留空） |
+
+会碰磁盘的只有 `logPath` 那一项，而且默认关闭。
+
+## 它工作起来是什么样
+
+下面这行是插件自己记的账（`logPath` 打开时写的那一行），来自一次真实对话：模型
+连续 3 步只思考和调工具、正文 0 字，插件随即注入了一条要求先给结论的提醒。
+
+```json
+{"at":"2026-09-26T09:15:30.056Z","sessionId":"session-befa…","kind":"no-conclusion-streak","streak":3,"reasoningChars":1840,"visibleChars":0,"toolCalls":2}
+```
+
+同一场对话稍后触发了另一条规则（单步思考超预算）—— 这次它要的是「先写一句判断
+再继续」：
+
+```json
+{"at":"2026-09-26T09:43:38.767Z","sessionId":"session-befa…","kind":"reasoning-over-budget","streak":1,"reasoningChars":4432,"visibleChars":0,"toolCalls":2}
+```
+
+两次都当场见效：模型的下一条回复就带上了正文。
 
 ## 让 AI agent 帮你装
 
