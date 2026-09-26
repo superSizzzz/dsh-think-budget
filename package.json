@@ -12,15 +12,15 @@
     "think-budget"
   ],
   "license": "MIT",
-  "author": "Officer-James",
+  "author": "superSizzzz",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Officer-James/dsh-think-budget.git"
+    "url": "git+https://github.com/superSizzzz/dsh-think-budget.git"
   },
   "bugs": {
-    "url": "https://github.com/Officer-James/dsh-think-budget/issues"
+    "url": "https://github.com/superSizzzz/dsh-think-budget/issues"
   },
-  "homepage": "https://github.com/Officer-James/dsh-think-budget#readme",
+  "homepage": "https://github.com/superSizzzz/dsh-think-budget#readme",
   "type": "module",
   "main": "src/index.ts",
   "exports": {

@@ -105,7 +105,7 @@ dependencies and mount the plugin into dsh's patch layer.
 
 ```powershell
 # 1) clone wherever you keep plugins
-git clone https://github.com/Officer-James/dsh-think-budget.git D:\plugins\dsh-think-budget
+git clone https://github.com/superSizzzz/dsh-think-budget.git D:\plugins\dsh-think-budget
 
 # 2) link dependencies (creates a node_modules junction to dsh's own)
 cd D:\plugins\dsh-think-budget

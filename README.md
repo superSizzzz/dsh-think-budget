@@ -86,7 +86,7 @@ peerDependencies。所以 clone 之后要把依赖接过去，再挂进 dsh 的�
 
 ```powershell
 # 1) 放到你想放的位置
-git clone https://github.com/Officer-James/dsh-think-budget.git D:\plugins\dsh-think-budget
+git clone https://github.com/superSizzzz/dsh-think-budget.git D:\plugins\dsh-think-budget
 
 # 2) 接依赖（在插件目录下建一个指向 dsh 依赖目录的 junction）
 cd D:\plugins\dsh-think-budget
