@@ -81,6 +81,44 @@ token 已经产生了。所以「限制思考长度」在这里的落地方式�
 
 ## 装上
 
+有两种装法。**二选一，不要同时用** —— 两种挂出来的补丁条目 id 相同，同时存在
+会让插件被加载两次，每条提醒发两遍。
+
+### 方式一：用 dsh 的插件管理器（推荐）
+
+```powershell
+dsh plugin --profile web add github:superSizzzz/dsh-think-budget
+```
+
+一条命令，不用手写任何配置。dsh 会从 GitHub 拉下这个包、读它在 package.json
+里声明的 `dsh.bundle.patch`，把包自带的补丁并入 profile —— 插件当场生效。
+
+卸载：
+
+```powershell
+dsh plugin --profile web remove dsh-think-budget
+```
+
+要改配置，就往该 profile 的补丁文件里补一条覆盖
+（`~/.dsh/profiles/web/cordis.patch.yml`）：
+
+```yaml
+- id: think-budget
+  config:
+    maxStepsWithoutConclusion: 5
+```
+
+只写你想改的字段，没写的回落到插件默认值。
+
+> 为什么它能这么装：包的 package.json 声明了 `dsh.bundle.patch`，且入口指向
+> 编译产物 `lib/index.js`。Node 的类型擦除明确拒绝 node_modules 里的 `.ts`
+> （`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`），所以凡走包名加载的插件
+> 都必须提供 `.js`。
+
+### 方式二：源码 checkout（想改代码用这个）
+
+挂的是 `src/index.ts`，靠 Node 的类型擦除，改完保存即热重载，不用编译。
+
 插件不自己装依赖 —— `@deepseek-ai/*` 由 dsh 提供，这里只声明
 peerDependencies。所以 clone 之后要把依赖接过去，再挂进 dsh 的补丁层。
 
@@ -135,6 +173,17 @@ dsh 都行）。它是自包含的，不用再补上下文。
 它是什么：给 dsh 的单步思考一个字数预算，连续几步没有输出可见结论时，往会话里
 注入一条提醒，要求先给结论再继续。插件只做两件事 —— 往系统提示加一段规则、往
 会话注入提醒 —— 不加新工具、不改消息内容。
+
+首选做法（一条命令，不用手写任何配置）：
+
+    dsh plugin --profile web add github:superSizzzz/dsh-think-budget
+
+dsh 会读包里的 dsh.bundle.patch 自动并入 profile。想确认装上了，就往
+~/.dsh/profiles/web/cordis.patch.yml 末尾追加一段覆盖，加上
+logPath: '<可写路径>/events.jsonl'，再看那个文件有没有出现
+{"event":"applied", ...} 这一行。卸载：dsh plugin --profile web remove dsh-think-budget。
+
+上面那条走不通时（网络或 pnpm 问题），改用下面的源码方式。
 
 步骤：
 1. clone 到一个你选定的插件目录，例如 D:\plugins\dsh-think-budget。
@@ -212,17 +261,26 @@ dsh 都行）。它是自包含的，不用再补上下文。
 
 ## 开发
 
-零构建：dsh 直接加载 `src/index.ts`，靠 Node 的 TypeScript 类型擦除（需要
-Node ≥ 22.6）。改完保存，profile 的 `patchReload: live` 就会热重载 —— 不用
-编译、不用重启 dsh。
+源码是 `src/*.ts`，两种加载方式各取所需：
+
+- **`src/index.ts` 直接加载**（方式二）：零构建，改完保存即热重载。
+- **`lib/*.js` 编译产物**（方式一）：给包名加载用 —— Node 拒绝擦除
+  node_modules 里的 `.ts`。产物随仓库提交，所以安装端不用装 TypeScript。
 
 ```powershell
 node scripts/link-deps.mjs   # 首次 clone 后接一次依赖
 npm test                     # 跑两个测试文件
+npm run typecheck            # 只做类型检查，不产出
+npm run build                # 改了 src/ 之后重建 lib/
 ```
 
-因为加载方式依赖类型擦除，源码里要避开需要转译的语法（`enum`、参数属性、
-装饰器），相对导入要带 `.ts` 扩展名。
+`tsconfig.json` 开了 `rewriteRelativeImportExtensions`：源码里的相对导入必须
+带 `.ts` 扩展名（类型擦除的要求），编译时会被改写成 `.js`，一份源码同时服务
+两种加载方式。同样因为类型擦除，源码里要避开需要转译的语法（`enum`、参数
+属性、装饰器）。
+
+**改了 `src/` 记得跑一次 `npm run build` 并提交 `lib/`** —— 否则
+`dsh plugin add` 装出来的还是旧产物。
 
 ## 测试
 
@@ -272,7 +330,10 @@ dsh --profile web --patch <插件目录>\test\verify-load.yml --port 3199 --no-o
 | `src/policy.ts` | 所有对模型说的话（系统提示段落、提醒正文、摘要） |
 | `src/config.ts` | schemastery 配置 schema 与归一化 |
 | `scripts/link-deps.mjs` | 把 `node_modules` 链到 dsh 的依赖目录 |
-| `cordis.think-budget.yml` | 现成的补丁层，`--patch` 直接用 |
+| `cordis.patch.yml` | 包自带的补丁层，`dsh plugin add` 装完自动应用 |
+| `cordis.think-budget.yml` | 本地 checkout 用的补丁层，`--patch` 直接用 |
+| `tsconfig.json` | 编译配置：`src/*.ts` → `lib/*.js` |
+| `lib/` | 编译产物（随仓库提交，安装端不用装构建工具链） |
 | `test/tracker.test.mjs` | 判定规则测试 |
 | `test/plugin.smoke.mjs` | 装配链路测试 |
 | `test/verify-load.yml` | 隔离实例验证用的补丁层 |

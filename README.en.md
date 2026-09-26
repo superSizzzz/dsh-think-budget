@@ -99,6 +99,49 @@ Three more things, stated plainly:
 
 ## Install
 
+There are two ways. **Pick one — do not use both.** They contribute a patch row
+with the same id, and having both mounted loads the plugin twice, so every
+reminder is injected twice.
+
+### Option 1: dsh's plugin manager (recommended)
+
+```powershell
+dsh plugin --profile web add github:superSizzzz/dsh-think-budget
+```
+
+One command, no patch file to write. dsh pulls the package from GitHub, reads
+the `dsh.bundle.patch` declared in its package.json, and folds the bundled patch
+into the profile — the plugin is live immediately.
+
+To remove it:
+
+```powershell
+dsh plugin --profile web remove dsh-think-budget
+```
+
+To change configuration, add an override row to that profile's patch file
+(`~/.dsh/profiles/web/cordis.patch.yml`):
+
+```yaml
+- id: think-budget
+  config:
+    maxStepsWithoutConclusion: 5
+```
+
+List only what you want to change; anything omitted falls back to the plugin's
+default.
+
+> Why this works: the package declares `dsh.bundle.patch` in its package.json,
+> and its entry points at the compiled `lib/index.js`. Node's type stripping
+> explicitly refuses `.ts` inside node_modules
+> (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so any plugin loaded by
+> package name must ship `.js`.
+
+### Option 2: source checkout (use this to edit the code)
+
+This one loads `src/index.ts` through Node's type stripping, so a save is a hot
+reload — no build step.
+
 The plugin does not install its own dependencies — `@deepseek-ai/*` is
 provided by dsh, declared here as peerDependencies. So after cloning, link the
 dependencies and mount the plugin into dsh's patch layer.
@@ -157,6 +200,18 @@ when several consecutive steps produce no visible conclusion it injects a
 reminder into the session asking for a conclusion before continuing. The plugin
 does exactly two things — adds a system-prompt section and injects a reminder.
 It adds no tools and rewrites no messages.
+
+Preferred route (one command, nothing to hand-write):
+
+    dsh plugin --profile web add github:superSizzzz/dsh-think-budget
+
+dsh reads the package's dsh.bundle.patch and folds it into the profile. To
+confirm it loaded, append an override to ~/.dsh/profiles/web/cordis.patch.yml
+adding logPath: '<writable path>/events.jsonl', then check whether that file
+contains a {"event":"applied", ...} line. To remove:
+dsh plugin --profile web remove dsh-think-budget.
+
+If that route is blocked (network or pnpm trouble), use the source route below.
 
 Steps:
 1. Clone it to a plugin directory of your choosing, e.g. D:\plugins\dsh-think-budget.
@@ -242,18 +297,28 @@ the patch entry's `name`.
 
 ## Development
 
-Zero build: dsh loads `src/index.ts` directly through Node's TypeScript type
-stripping (Node ≥ 22.6). Save a change and the profile's `patchReload: live`
-hot-reloads it — no compile step, no dsh restart.
+The source is `src/*.ts`, and the two load paths each use one form:
+
+- **`src/index.ts` loaded directly** (Option 2): zero build, a save is a hot reload.
+- **`lib/*.js`, the compiled output** (Option 1): required for package-name
+  loading — Node refuses to strip types inside node_modules. The output is
+  committed, so installers need no TypeScript.
 
 ```powershell
 node scripts/link-deps.mjs   # run once after cloning
 npm test                     # run both test files
+npm run typecheck            # types only, no output
+npm run build                # rebuild lib/ after editing src/
 ```
 
-Because loading relies on type stripping, avoid syntax that needs
-transformation (`enum`, parameter properties, decorators), and keep the `.ts`
-extension on relative imports.
+`tsconfig.json` enables `rewriteRelativeImportExtensions`: relative imports in
+the source must carry the `.ts` extension (a type-stripping requirement) and are
+rewritten to `.js` on the way out, so one source tree serves both load paths.
+For the same reason, avoid syntax that needs transformation (`enum`, parameter
+properties, decorators).
+
+**After editing `src/`, run `npm run build` and commit `lib/`** — otherwise
+`dsh plugin add` installs the stale output.
 
 ## Tests
 
@@ -308,7 +373,10 @@ line. No lines means either the model behaved, or the thresholds are too loose
 | `src/policy.ts` | Everything said to the model (system section, reminder bodies, summaries) |
 | `src/config.ts` | schemastery config schema and normalization |
 | `scripts/link-deps.mjs` | Links `node_modules` to dsh's dependency directory |
-| `cordis.think-budget.yml` | Ready-made patch layer for `--patch` |
+| `cordis.patch.yml` | The package's own patch layer, applied by `dsh plugin add` |
+| `cordis.think-budget.yml` | Patch layer for local checkouts, used with `--patch` |
+| `tsconfig.json` | Build config: `src/*.ts` → `lib/*.js` |
+| `lib/` | Compiled output (committed, so installers need no build toolchain) |
 | `test/tracker.test.mjs` | Judging-rule tests |
 | `test/plugin.smoke.mjs` | Wiring tests |
 | `test/verify-load.yml` | Patch layer for the isolated load check |
