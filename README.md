@@ -1,12 +1,9 @@
-# dsh-think-budget —— 思考节拍器
+# dsh-think-budget
 
 [English](README.en.md) | 中文
 
-管住 dsh「闷头想很久、屏幕上一直不出现正文」这件事：给单步思考一个字数
-预算，并且要求它在若干步之内必须写出一条可见结论，然后才能继续。
-
-插件本身没有任何新工具、新服务、新 UI。它只做两件事：往系统提示里写一段
-规则，以及在模型越界时往会话里塞一条提醒。
+dsh 干活时会闷头想很久，屏幕上半天不出现一个字 —— 你分不清它是在推进还是卡死了。
+这个插件给它一个节拍：单步思考有字数预算，连续几步没写出正文就提醒它一句。
 
 ## 装它
 
@@ -15,277 +12,129 @@ dsh plugin --profile web add github:superSizzzz/dsh-think-budget
 ```
 
 一条命令，装完即生效 —— dsh 会读包里的 `dsh.bundle.patch` 自动并入 profile。
-卸载：`dsh plugin --profile web remove dsh-think-budget`。
 
-换 `--profile` 后面的名字就能装到别的 profile，每个 profile 各装一次。
+```powershell
+dsh plugin --profile web remove dsh-think-budget    # 卸载
+```
 
 | 项 | 要求 |
 |---|---|
 | dsh | ≥ 0.1.7-rc.2 |
 | Node | ≥ 22.6 |
-| profile | 不限 —— web / tui / headless 都能装，插件不碰任何 web 专属能力 |
-| 模型 | 不限 —— 只有会产出 reasoning 的路由才会触发「思考超预算」那条规则 |
+| profile | 不限 —— web / tui / headless 都能装 |
+| 模型 | 不限 —— 只有会产出思考过程的路由才会触发「思考超预算」那条规则 |
 
-想改源码、让改动立刻热重载，见下面《装上》里的方式二。
+换 `--profile` 后面的名字就能装到别的 profile，每个 profile 各装一次。
+想改源码、让改动立刻热重载，见[开发与测试](docs/development.md)。
 
-## 它管的是什么
+## 它怎么管
 
-观察到的现象：一次提问之后，模型连着跑了十来步 —— 每一步都在思考、都在调
-工具 —— 但对话里一个字都没多出来。用户看不出它是在推进还是卡住了。
+两个触发条件，满足任一就出手：
 
-判据只有一条，都在明面上：
+- **连着几步没写正文** —— 默认 3 步。「正文」指对话里看得见的那部分，思考过程不算：
+  你看不见的东西不算交付。
+- **单步思考太长** —— 默认 4000 字，且这一步同样没写正文。
 
-- **一次「回复」= 一步** = 一次成功的模型调用（一个提交进会话的
-  `assistant/message`）。失败的尝试、被取消的流不算。
-- **「结论」= 这一步的可见正文**，去掉空白后长度 ≥ `minConclusionChars`。
-  思考（reasoning）不算 —— 用户看不见它，它就不是交付物。
-- 连续 `maxStepsWithoutConclusion` 步没有结论，或者单步思考超过
-  `maxReasoningCharsPerStep` 字且这一步没结论，就出手。
+做法分两层：平时往系统提示里写一段节拍规则让模型自己配合，越界时直接往会话里注入
+一条提醒。模型收到的就是这段：
 
-## 两层机制
-
-**预防层** —— 往系统提示注册一段「思考节拍」：
-
-```markdown
-## 思考节拍
-
-- 思考（reasoning）是内部草稿，用户看不到；正文才是交付物。不要把结论留在思考里。
-- 每 3 次回复之内，至少写一次可见正文结论 —— 阶段判断也算，「目前还不确定，因为…」也算。
-- 单次思考控制在约 4000 字以内。一件事推演到能下判断就够了，不要反复重推同一个问题。
-- 先给结论，再继续调用工具；需要长任务时，用阶段结论代替沉默。
-```
-
-模型一开始就配合，比事后纠正省事得多。关掉它（`systemPromptSection: false`）
-就只剩补救层。
-
-**补救层** —— 越界时注入一条模型可见的提醒：
-
-```
+```text
 【思考节拍】你最近连续 3 次回复都没有写正文，只有思考和工具调用。
 现在请立即用正文写出你目前的结论 —— 可以很短、可以不完整、可以是
 「还不确定，因为…」，但必须写出来。
 写完之后如果还需要继续，再继续调用工具。
 ```
 
-这条消息走 `agent.inject()`，是一等公民的 user 消息：有 id、有自己的来源
-kind（`think-budget`）、会进会话日志、在 UI 里有折叠摘要。它不是注释、不是
-旁路 —— 模型像读任何一条用户消息那样读它。
+文案故意留了退路：「还不确定」也算结论。只逼「必须说点什么」、不逼「必须想明白」——
+否则模型为了凑数会编一个假答案，那是这类插件最容易帮倒忙的地方。
 
-文案刻意给退路：「还不确定」也算结论。只逼「必须写点什么」、不逼「必须想
-明白」，否则模型为了凑结论会编一个假答案 —— 那是这类插件最容易帮倒忙的
-地方。
+## 用起来是什么样
 
-## 能力边界
+下面两行是插件自己记的账，来自真实对话（会话 id 已省略）。
 
-**它拦不住正在生成的思考流。**
+第一条：模型连续 3 步只思考和调工具、正文 0 字，插件随即要求它先给结论。
 
-reasoning 由模型端产出、经由流式协议送达 harness。harness 收的时候那些
-token 已经产生了。所以「限制思考长度」在这里的落地方式是：
-
-- 越界 → 下一轮施压（提醒注入）；
-- 可选硬手段：越界 → 该步请求换一个更低的推理强度
-  （`downgradeReasoningEffort`，**默认关闭**）。
-
-「到点掐断正在生成的思考」这件事，插件层做不到。唯一真正的硬开关是推理
-强度，而它是按请求设置的，只能在每一步开始前决定。
-
-另外三点也如实说：
-
-- **不取消轮次、不拒绝步骤、不改消息内容。** 插件只往会话里加消息。想强
-  制停止失控轮次是另一个插件的活（`agent/turn-stopping` 那条路）。
-- **恢复的会话从零开始计数。** 账本只在内存里，是从流里现数的。恢复一个
-  压缩过的会话不会把历史 reasoning 重算一遍。
-- **降档是唯一有副作用的开关。** 填了模型不支持的档位，会让这次请求以
-  `UNSUPPORTED_REASONING_EFFORT` 失败。所以默认关，且只在连续无结论到
-  阈值（模型明显陷进去了）时才用。
-
-## 装上
-
-有两种装法。**二选一，不要同时用** —— 两种挂出来的补丁条目 id 相同，同时存在
-会让插件被加载两次，每条提醒发两遍。
-
-### 方式一：用 dsh 的插件管理器（推荐）
-
-```powershell
-dsh plugin --profile web add github:superSizzzz/dsh-think-budget
+```json
+{"at":"2026-09-26T09:15:30.056Z","kind":"no-conclusion-streak","streak":3,"reasoningChars":1840,"visibleChars":0,"toolCalls":2}
 ```
 
-一条命令，不用手写任何配置。dsh 会从 GitHub 拉下这个包、读它在 package.json
-里声明的 `dsh.bundle.patch`，把包自带的补丁并入 profile —— 插件当场生效。
+第二条：同一场对话稍后，单步思考到 4432 字、依然没写正文。
 
-卸载：
+```json
+{"at":"2026-09-26T09:43:38.767Z","kind":"reasoning-over-budget","streak":1,"reasoningChars":4432,"visibleChars":0,"toolCalls":2}
+```
+
+两次都当场见效：模型的下一条回复就带上了正文。
+
+## 调它
+
+配置写在装它的那段 patch 里 —— 没有独立配置文件，也没有设置界面。要改松紧，往
+`~/.dsh/profiles/web/cordis.patch.yml` 末尾追加一段（只写要改的字段）：
+
+```yaml
+- id: think-budget
+  config:
+    maxStepsWithoutConclusion: 5      # 连续几步没正文才提醒，默认 3
+    maxReasoningCharsPerStep: 8000    # 单步思考字数预算，默认 4000
+```
+
+保存即热重载，不用重启 dsh。字段填错会在重载时报清晰的错误，不会静默退回默认值。
+
+想更严：`maxStepsWithoutConclusion: 2`、`maxReasoningCharsPerStep: 2500`。
+全部字段见[配置速查](#配置速查)。
+
+### 怎么确认它真的在管事
+
+给配置加一行日志路径：
+
+```yaml
+- id: think-budget
+  config:
+    logPath: 'D:/logs/think-budget.jsonl'
+```
+
+那个文件随即出现一行 `{"event":"applied",…}`（里面是这次实际生效的配置）—— 有它
+就说明插件装上了。之后每次出手还会追加一行。
+
+一行都没有 = 插件没被加载，回头检查装它的命令有没有成功。
+
+## 它不碰什么
+
+| | |
+|---|---|
+| 网络 | 不发任何请求 |
+| 命令 | 不执行任何命令 |
+| 工具 | 不加新工具、不改你的工具列表 |
+| 你的消息 | 不改写、不删除 |
+| 会话 | 只往里加消息；不取消轮次、不拦截步骤 |
+| 磁盘 | 唯一会碰的是 `logPath` 那个日志文件，默认关闭 |
+
+完整的权限说明与已知限制见[工作原理](docs/how-it-works.md)。
+
+## 卸载
 
 ```powershell
 dsh plugin --profile web remove dsh-think-budget
 ```
 
-要改配置，就往该 profile 的补丁文件里补一条覆盖
-（`~/.dsh/profiles/web/cordis.patch.yml`）：
+源码方式装的，删掉补丁文件里那段 `- insert:` 即可。插件不写任何持久状态，删掉就是删掉。
 
-```yaml
-- id: think-budget
-  config:
-    maxStepsWithoutConclusion: 5
-```
+## 常见问题
 
-只写你想改的字段，没写的回落到插件默认值。
+**装完没动静？** 正常 —— 只有模型真的越界时它才出声。想看它有没有在运行，按上面
+「怎么确认它真的在管事」加一行 `logPath`。
 
-> 为什么它能这么装：包的 package.json 声明了 `dsh.bundle.patch`，且入口指向
-> 编译产物 `lib/index.js`。Node 的类型擦除明确拒绝 node_modules 里的 `.ts`
-> （`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`），所以凡走包名加载的插件
-> 都必须提供 `.js`。
+**会不会拖慢会话？** 不会。它只是在流经过时数一下字数，不额外调用模型、不阻塞。
 
-### 方式二：源码 checkout（想改代码用这个）
+**能和其他插件共存吗？** 能。用的都是 dsh 的公开扩展点，跟你现有的插件互不干扰。
 
-挂的是 `src/index.ts`，靠 Node 的类型擦除，改完保存即热重载，不用编译。
-
-插件不自己装依赖 —— `@deepseek-ai/*` 由 dsh 提供，这里只声明
-peerDependencies。所以 clone 之后要把依赖接过去，再挂进 dsh 的补丁层。
-
-```powershell
-# 1) 放到你想放的位置
-git clone https://github.com/superSizzzz/dsh-think-budget.git D:\plugins\dsh-think-budget
-
-# 2) 接依赖（在插件目录下建一个指向 dsh 依赖目录的 junction）
-cd D:\plugins\dsh-think-budget
-node scripts/link-deps.mjs
-
-# 3) 挂载 —— 见下面的 patch 段
-```
-
-```yaml
-- insert:
-    - id: think-budget
-      name: 'file:///D:/plugins/dsh-think-budget/src/index.ts'   # ← 上一步打印出来的那行
-      config:
-        enabled: true
-        maxReasoningCharsPerStep: 4000
-        maxStepsWithoutConclusion: 3
-```
-
-粘到哪个文件，决定管多大范围：
-
-| 文件 | 作用范围 |
-|---|---|
-| `~/.dsh/profiles/web/cordis.patch.yml` | 只管 web profile |
-| `~/.dsh/cordis.patch.yml` | home 层，对所有 profile 生效 |
-
-追加到末尾即可，别覆盖文件里原有的条目 —— 这是个 insert 补丁，跟已有内容共存。
-dsh 的 profile 默认开着 `patchReload: live`，保存即热重载，不用重启。
-
-想先试一次、不碰任何 profile 文件，仓库里备了一份现成的补丁层（把里面的
-`<plugin-dir>` 换成你的实际目录）：
-
-```powershell
-dsh web --patch <plugin-dir>/cordis.think-budget.yml
-```
-
-## 它要什么权限
-
-没有网络请求，不执行命令，不加新工具，不改写你的消息。全部动作都落在 dsh 现有
-的事件面上：
-
-| 动作 | 具体是什么 | 怎么关 |
-|---|---|---|
-| 读 | 数流里的分片长度（`agent/assistant-stream` 的 text / reasoning delta） | `enabled: false` |
-| 写 | 往会话注入一条 user 消息（`agent.inject`） | `enabled: false` |
-| 改 | 注册一段系统提示（`systemPrompt.section`） | `systemPromptSection: false` |
-| 改 | 改写单步请求的推理强度（`agent/request` waterfall） | 默认就关（`downgradeReasoningEffort` 留空） |
-| 文件 | 往 `logPath` 追加一行 JSONL | 默认就关（`logPath` 留空） |
-
-会碰磁盘的只有 `logPath` 那一项，而且默认关闭。
-
-## 它工作起来是什么样
-
-下面这行是插件自己记的账（`logPath` 打开时写的那一行），来自一次真实对话：模型
-连续 3 步只思考和调工具、正文 0 字，插件随即注入了一条要求先给结论的提醒。
-
-```json
-{"at":"2026-09-26T09:15:30.056Z","sessionId":"session-befa…","kind":"no-conclusion-streak","streak":3,"reasoningChars":1840,"visibleChars":0,"toolCalls":2}
-```
-
-同一场对话稍后触发了另一条规则（单步思考超预算）—— 这次它要的是「先写一句判断
-再继续」：
-
-```json
-{"at":"2026-09-26T09:43:38.767Z","sessionId":"session-befa…","kind":"reasoning-over-budget","streak":1,"reasoningChars":4432,"visibleChars":0,"toolCalls":2}
-```
-
-两次都当场见效：模型的下一条回复就带上了正文。
-
-## 让 AI agent 帮你装
-
-下面这段可以直接粘给任何能操作你机器的 AI agent（Claude Code、Cursor，或者另一个
-dsh 都行）。它是自包含的，不用再补上下文。
-
-```text
-帮我把 dsh-think-budget 这个 dsh 插件装到本机。
-
-仓库：https://github.com/superSizzzz/dsh-think-budget
-
-它是什么：给 dsh 的单步思考一个字数预算，连续几步没有输出可见结论时，往会话里
-注入一条提醒，要求先给结论再继续。插件只做两件事 —— 往系统提示加一段规则、往
-会话注入提醒 —— 不加新工具、不改消息内容。
-
-首选做法（一条命令，不用手写任何配置）：
-
-    dsh plugin --profile web add github:superSizzzz/dsh-think-budget
-
-dsh 会读包里的 dsh.bundle.patch 自动并入 profile。想确认装上了，就往
-~/.dsh/profiles/web/cordis.patch.yml 末尾追加一段覆盖，加上
-logPath: '<可写路径>/events.jsonl'，再看那个文件有没有出现
-{"event":"applied", ...} 这一行。卸载：dsh plugin --profile web remove dsh-think-budget。
-
-上面那条走不通时（网络或 pnpm 问题），改用下面的源码方式。
-
-步骤：
-1. clone 到一个你选定的插件目录，例如 D:\plugins\dsh-think-budget。
-2. 进那个目录跑 `node scripts/link-deps.mjs --patch`。它会在目录里建一个指向 dsh
-   依赖目录的 node_modules junction（不做这步，插件 import `@deepseek-ai/*` 会
-   失败），然后把一份路径已经填好的 patch 片段打印出来。
-3. 把打印出来的 `- insert:` 段追加到下面哪个文件的末尾，由你决定范围：
-     ~/.dsh/cordis.patch.yml                → home 层，所有 profile 生效
-     ~/.dsh/profiles/web/cordis.patch.yml   → 只管 web profile
-   注意是追加到末尾那个 YAML 数组里，不要覆盖原有的插件条目。
-4. 验证：dsh 的 profile 默认 patchReload: live，保存即热重载。想确认装载成功，在
-   那段 config 里加一行 `logPath: '<plugin-dir>/events.jsonl'`，再看那个文件里有
-   没有出现 {"event":"applied", ...} 这一行。
-
-注意：
-- 这是个 insert 补丁，跟补丁文件里已有的内容共存，别动别人的条目。
-- 插件目录下必须存在 node_modules（第 2 步建的），否则加载会失败。
-- 装完不需要重启 dsh；热重载没起来的话再重启。
-- 想临时停手：把 config 里的 enabled 改成 false。彻底卸掉：删掉那个 insert 块。
-- 默认阈值是「连续 3 步无结论」和「单步思考 4000 字」。嫌管得碎就调大到 5 / 8000。
-```
-
-## 卸掉
-
-从 `cordis.patch.yml` 删掉那个 `insert` 块（或把 `enabled` 改成 `false`
-保留代码但停手）。插件没写任何持久状态，删掉就是删掉。
-
-## 配置
-
-配置就写在那段 patch 的 `config:` 里 —— 没有独立配置文件，也没有设置界面。
-改完保存即可：热重载会重新校验配置、重建监听器；字段填错会在重载时报清晰的
-错误，不会静默退回默认值。
-
-```yaml
-- insert:
-    - id: think-budget
-      name: 'file:///<plugin-dir>/src/index.ts'
-      config:
-        # ↓ 要调的就是这一段
-        enabled: true
-        maxReasoningCharsPerStep: 4000
-        maxStepsWithoutConclusion: 3
-```
+## 配置速查
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `enabled` | `true` | 总开关。false 时一个监听器都不装 |
-| `maxReasoningCharsPerStep` | `4000` | 单步思考字符预算；只在「这一步没结论」时算数。`0` 关掉这一项 |
-| `maxStepsWithoutConclusion` | `3` | 连续多少步没结论就强制要一条。`0` 关掉这一项 |
+| `maxReasoningCharsPerStep` | `4000` | 单步思考字符预算；只在「这一步没写正文」时算数。`0` 关掉这一项 |
+| `maxStepsWithoutConclusion` | `3` | 连续多少步没写正文就强制要一条。`0` 关掉这一项 |
 | `minConclusionChars` | `12` | 去空白后多长算「结论」。挡住「让我看看」这类过渡语 |
 | `cooldownSteps` | `2` | 同一种提醒两次之间的最小步数间隔 |
 | `maxRemindersPerTurn` | `5` | 单轮提醒条数上限；到顶就闭嘴等下一条用户消息 |
@@ -295,113 +144,14 @@ logPath: '<可写路径>/events.jsonl'，再看那个文件有没有出现
 | `reminderTag` | `思考节拍` | 提醒文案里方括号里的标签 |
 | `logPath` | `''` | 事件日志（JSONL）。空 = 不记 |
 
-想更严：`maxStepsWithoutConclusion: 2`、`maxReasoningCharsPerStep: 2500`。
-想更松：`maxStepsWithoutConclusion: 5`、`maxReasoningCharsPerStep: 8000`。
+## 想深入
 
-### 怎么确认它真的生效
+- [工作原理](docs/how-it-works.md) —— 判定细节、用到的 dsh 事件面、实现地图、已知限制
+- [开发与测试](docs/development.md) —— 源码加载 vs 编译产物、构建、三个测试
+- [排查](docs/troubleshooting.md) —— 日志字段、调阈值、装了两份怎么办
 
-配置里加一行 `logPath: '<plugin-dir>/events.jsonl'` 并保存。那个文件会立刻出现
-一行：
-
-```json
-{"at":"2026-01-01T00:00:00.000Z","event":"applied","node":"v26.5.0","headless":false,"config":{"maxReasoningCharsPerStep":4000,...}}
-```
-
-`config` 里就是这次实际生效的值。**有这一行 = 插件被加载了、配置也读进去了。**
-之后每次出手还会往同一个文件追加记录（格式见下面的《排查》）。
-
-一行都没有 = 插件没被加载，回去检查 patch 里 `name` 那个路径。
-
-## 开发
-
-源码是 `src/*.ts`，两种加载方式各取所需：
-
-- **`src/index.ts` 直接加载**（方式二）：零构建，改完保存即热重载。
-- **`lib/*.js` 编译产物**（方式一）：给包名加载用 —— Node 拒绝擦除
-  node_modules 里的 `.ts`。产物随仓库提交，所以安装端不用装 TypeScript。
-
-```powershell
-node scripts/link-deps.mjs   # 首次 clone 后接一次依赖
-npm test                     # 跑两个测试文件
-npm run typecheck            # 只做类型检查，不产出
-npm run build                # 改了 src/ 之后重建 lib/
-```
-
-`tsconfig.json` 开了 `rewriteRelativeImportExtensions`：源码里的相对导入必须
-带 `.ts` 扩展名（类型擦除的要求），编译时会被改写成 `.js`，一份源码同时服务
-两种加载方式。同样因为类型擦除，源码里要避开需要转译的语法（`enum`、参数
-属性、装饰器）。
-
-**改了 `src/` 记得跑一次 `npm run build` 并提交 `lib/`** —— 否则
-`dsh plugin add` 装出来的还是旧产物。
-
-## 测试
-
-两个测试都是直跑，不需要起 dsh、不花额度：
-
-```powershell
-npm test                            # 两个一起跑
-node test/tracker.test.mjs          # 判定规则的 43 项断言
-node test/plugin.smoke.mjs          # 装配与注入链路的 34 项断言
-```
-
-`tracker.test.mjs` 钉的是智力：什么算结论、什么时候出声、冷却和配额怎么算、
-新一轮怎么清账、关掉的项真的不触发。
-
-`plugin.smoke.mjs` 钉的是接线：`apply` 不抛错、事件名注册得上、流里的字数
-被正确累计、越界时真的调了 `agent.inject()`、注入的是一份 harness 收得下
-的完整 user 消息。用的是假 ctx 和假 agent。
-
-想再验一层「dsh 的 loader 到底认不认它」，起一个不占 3080 的隔离实例：
-
-```powershell
-dsh --profile web --patch <插件目录>\test\verify-load.yml --port 3199 --no-open
-```
-
-`verify-load.yml` 会先把飞书桥关掉（验证过程不该往真实飞书发消息），再把
-装载留痕写进 `test/.verify-applied.jsonl`。文件里出现带 `"event":"applied"`
-的行，就说明 loader 解析了 file:// 路径、import 了 `.ts`、校过 config、
-调到了 `apply`。验证完把那个实例关掉即可。
-
-## 排查
-
-在配置里打开 `logPath`，每次注入提醒会追加一行 JSONL：
-
-```json
-{"at":"2026-01-01T00:00:00.000Z","sessionId":"main-session-...","kind":"no-conclusion-streak","streak":3,"reasoningChars":1284,"visibleChars":0,"toolCalls":2}
-```
-
-有行 = 插件在管事、模型确实越界了。一行都没有 = 模型这段时间表现没问题，
-或者阈值太松（调小 `maxStepsWithoutConclusion` 试试）。
-
-## 实现地图
-
-| 文件 | 职责 |
-|---|---|
-| `src/index.ts` | 插件入口：装配监听器、累计流、投递提醒、注册系统提示 |
-| `src/tracker.ts` | 账本与判定规则。纯逻辑，不碰任何服务 |
-| `src/policy.ts` | 所有对模型说的话（系统提示段落、提醒正文、摘要） |
-| `src/config.ts` | schemastery 配置 schema 与归一化 |
-| `scripts/link-deps.mjs` | 把 `node_modules` 链到 dsh 的依赖目录 |
-| `cordis.patch.yml` | 包自带的补丁层，`dsh plugin add` 装完自动应用 |
-| `cordis.think-budget.yml` | 本地 checkout 用的补丁层，`--patch` 直接用 |
-| `tsconfig.json` | 编译配置：`src/*.ts` → `lib/*.js` |
-| `lib/` | 编译产物（随仓库提交，安装端不用装构建工具链） |
-| `test/tracker.test.mjs` | 判定规则测试 |
-| `test/plugin.smoke.mjs` | 装配链路测试 |
-| `test/verify-load.yml` | 隔离实例验证用的补丁层 |
-
-## 它依赖的 harness 接口
-
-全部来自 dsh 0.1.7-rc.2 的公开事件面，没有碰包内实现：
-
-| 接口 | 用途 |
-|---|---|
-| `agent/assistant-stream` | 逐片读流的 `text-delta` / `reasoning-delta`，累积出「这一步思考多长、写了多少正文」 |
-| `agent.inject(UserMessage)` | 把提醒投进模型看得见的地方 |
-| `agent/request` waterfall | 可选：改写这一步的 `reasoningEffort` |
-| `systemPrompt.section()` | 注册「思考节拍」系统提示段落 |
-| `createUserMessage()` / `MessageSourceMap` | 造一条合法消息，并声明自己的来源 kind |
+也可以直接对 AI agent 说一句：「照 https://github.com/superSizzzz/dsh-think-budget
+的 README 帮我装上」，它读得懂。
 
 ## 许可
 
