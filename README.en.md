@@ -8,6 +8,19 @@ you have no way to tell whether it is working or stuck.
 This plugin gives it a pace: a character cap per step, and a nudge whenever
 several steps go by without any visible prose.
 
+## Contents
+
+- [Install](#install)
+- [What it does](#what-it-does)
+- [Usage](#usage)
+- [Configuring the step budget](#configuring-the-step-budget)
+- [Viewing the log](#viewing-the-log)
+- [Permissions](#permissions)
+- [Uninstall](#uninstall)
+- [FAQ](#faq)
+- [More docs](#more-docs)
+- [License](#license)
+
 ## Install
 
 ```powershell
