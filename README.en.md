@@ -2,47 +2,56 @@
 
 English | [中文](README.md)
 
-dsh sometimes thinks for a long time without saying anything — you cannot tell
-whether it is making progress or stuck. This plugin gives it a pace: a character
-budget per step, and a nudge whenever several steps go by without visible prose.
+When dsh thinks for a while it can leave the screen blank for a long stretch, and
+you have no way to tell whether it is working or stuck.
 
-## Install it
+This plugin gives it a pace: a character cap per step, and a nudge whenever
+several steps go by without any visible prose.
+
+## Install
 
 ```powershell
 dsh plugin --profile web add github:superSizzzz/dsh-think-budget
 ```
 
-One command, live immediately — dsh reads the package's `dsh.bundle.patch` and
-folds it into the profile.
+One command, and that is the whole install. dsh reads the `dsh.bundle.patch`
+inside the package and folds it into the current profile, so there is nothing to
+hand-write.
+
+To take it back out:
 
 ```powershell
-dsh plugin --profile web remove dsh-think-budget    # uninstall
+dsh plugin --profile web remove dsh-think-budget
 ```
 
 | Item | Requirement |
 |---|---|
 | dsh | ≥ 0.1.7-rc.2 |
 | Node | ≥ 22.6 |
-| profile | Any — web / tui / headless all work |
-| model | Any — only routes that emit reasoning trigger the over-budget rule |
+| profile | Any. web / tui / headless all work |
+| model | Any. Only routes that emit reasoning can trigger the over-budget rule |
 
-Change the name after `--profile` to install into another profile; install once
-per profile. To edit the source with instant hot reload, see
+For another profile, change the name after `--profile` and install once per
+profile.
+
+If you would rather edit the code, the source route is easier. See
 [Development](docs/development.md).
 
-## How it works
+## What it does
 
-Two triggers, either one fires it:
+It watches two things, and either one is enough to make it speak up.
 
-- **Several steps with no prose** — 3 by default. "Prose" means the part you can
-  see in the conversation; reasoning does not count, because what you cannot see
-  is not a deliverable.
-- **One step reasoning too long** — 4000 characters by default, and that step
-  wrote no prose either.
+The first is several steps in a row with no prose, three by default. "Prose"
+means the part you can see in the conversation. The model's reasoning does not
+count: if you cannot see it, as far as you are concerned it never happened.
 
-It works in two layers: a pacing rule written into the system prompt so the model
-cooperates up front, and a reminder injected into the session when a line is
-crossed. This is what the model receives:
+The second is a single step reasoning for too long, 4000 characters by default.
+That one also requires the step to have written no prose. If it reasoned for a
+while and still told you what it concluded, the plugin leaves it alone.
+
+It works in two layers. Normally it puts a pacing rule into the system prompt so
+the model keeps an eye on itself. When a line is actually crossed it drops a
+reminder into the session. This is what the model reads:
 
 ```text
 【思考节拍】你最近连续 3 次回复都没有写正文，只有思考和工具调用。
@@ -51,53 +60,73 @@ crossed. This is what the model receives:
 写完之后如果还需要继续，再继续调用工具。
 ```
 
-The wording deliberately leaves an exit: "I'm not sure yet" counts as a
-conclusion. It demands *something be said*, not *something be figured out* —
-otherwise a model will invent a fake answer to satisfy the counter.
+That line about "I'm not sure yet" counting as a conclusion is deliberate. It
+asks the model to say something, not to figure everything out. Otherwise a model
+trying to satisfy a counter will invent an answer, which is worse than silence.
 
-## What it looks like when it fires
+## Usage
 
-Both lines below are the plugin's own ledger entries, from a real session (the
-session id is omitted).
+There is nothing to do after installing. It runs on its own and does not slow the
+session down; it only counts characters as the stream goes by and makes no extra
+model calls.
 
-First: three consecutive steps of reasoning and tool calls with zero prose, so
-the plugin asked for a conclusion.
+Most of the time it is quiet. It speaks up only when the model actually crosses a
+line. The two lines below came out of a real session (session id omitted):
 
 ```json
 {"at":"2026-09-26T09:15:30.056Z","kind":"no-conclusion-streak","streak":3,"reasoningChars":1840,"visibleChars":0,"toolCalls":2}
 ```
 
-Second: later in the same session, a single step reasoned 4432 characters without
-writing any prose.
-
 ```json
 {"at":"2026-09-26T09:43:38.767Z","kind":"reasoning-over-budget","streak":1,"reasoningChars":4432,"visibleChars":0,"toolCalls":2}
 ```
 
-Both took effect immediately: the model's next reply carried prose.
+The first is three steps of nothing but reasoning and tool calls, zero prose, so
+it asked for a conclusion. The second is later in the same session, where one
+step reasoned 4432 characters and still wrote nothing.
 
-## Tuning it
+Both worked on the spot. The model's next reply had prose in it.
 
-Configuration lives in the patch entry's `config:` block — no separate config
-file, no settings UI. To adjust how tight it is, append an override to
-`~/.dsh/profiles/web/cordis.patch.yml` (list only the fields you change):
+## Configuring the step budget
+
+Configuration lives in the patch entry that installs it. There is no separate
+config file and no settings UI.
+
+To loosen or tighten it, add an override to the end of
+`~/.dsh/profiles/web/cordis.patch.yml`, listing only the fields you want to
+change:
 
 ```yaml
 - id: think-budget
   config:
     maxStepsWithoutConclusion: 5      # steps without prose before it speaks, default 3
-    maxReasoningCharsPerStep: 8000    # per-step reasoning budget, default 4000
+    maxReasoningCharsPerStep: 8000    # per-step reasoning cap, default 4000
 ```
 
-Saving is hot-reloading; no dsh restart. A bad value fails loudly at reload time
-rather than silently falling back to a default.
+Saving is enough, no dsh restart. A bad value reports an error at reload instead
+of quietly falling back to a default.
 
-Stricter: `maxStepsWithoutConclusion: 2`, `maxReasoningCharsPerStep: 2500`.
-Every field is listed under [Configuration](#configuration) below.
+For a tighter setting: `maxStepsWithoutConclusion: 2`,
+`maxReasoningCharsPerStep: 2500`.
 
-### Confirming it actually runs
+| Field | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Master switch. When false, no listener is installed at all |
+| `maxReasoningCharsPerStep` | `4000` | Per-step reasoning cap, counted only when the step wrote no prose. `0` disables this rule |
+| `maxStepsWithoutConclusion` | `3` | Consecutive steps without prose before it asks for one. `0` disables this rule |
+| `minConclusionChars` | `12` | How long, after trimming, counts as prose. Keeps "let me take a look" from clearing the counter |
+| `cooldownSteps` | `2` | Minimum gap in steps between two reminders of the same kind |
+| `maxRemindersPerTurn` | `5` | Reminder cap per turn. Once reached it stays quiet until the next user message |
+| `includeSubagents` | `true` | Whether sub-agents are governed too. False watches top-level agents only |
+| `systemPromptSection` | `true` | Whether the pacing rule is written into the system prompt |
+| `downgradeReasoningEffort` | `''` | Reasoning effort to switch to when a line is crossed. Empty means never, **which is the recommended setting** |
+| `reminderTag` | `思考节拍` | The label inside the brackets of every reminder |
+| `logPath` | `''` | Event log path. Empty means nothing is recorded |
 
-Add a log path:
+## Viewing the log
+
+The plugin has no interface. To find out whether it is doing anything, give it a
+log:
 
 ```yaml
 - id: think-budget
@@ -105,25 +134,35 @@ Add a log path:
     logPath: 'D:/logs/think-budget.jsonl'
 ```
 
-That file immediately gains a `{"event":"applied",…}` line (containing the config
-that actually took effect) — its presence means the plugin loaded. Every later
-reminder appends another line.
+The file immediately gains a load record. Its `config` field is the configuration
+that actually took effect, which is a handy way to confirm your settings were
+read:
 
-No lines at all means the plugin did not load — go back and check whether the
-install command succeeded.
+```json
+{"at":"2026-01-01T00:00:00.000Z","event":"applied","node":"v26.5.0","headless":false,"config":{}}
+```
 
-## What it does not touch
+Every reminder afterwards appends a line too:
+
+```json
+{"at":"...","sessionId":"...","kind":"no-conclusion-streak","streak":3,"reasoningChars":1284,"visibleChars":0,"toolCalls":2}
+```
+
+No lines at all means the plugin never loaded. Go back and check whether the
+install command reported an error.
+
+## Permissions
 
 | | |
 |---|---|
 | Network | Sends no requests |
 | Commands | Executes nothing |
-| Tools | Adds no tools, does not change your tool list |
-| Your messages | Never rewrites or deletes them |
-| Session | Only appends messages; does not cancel turns or reject steps |
-| Disk | The only thing it touches is the `logPath` log file, off by default |
+| Tools | Adds no tools and does not touch your tool list |
+| Your messages | Never rewritten, never deleted |
+| Session | Only appends messages. Does not cancel turns or reject steps |
+| Disk | Only the `logPath` log file, and that is off by default |
 
-Full permissions and known limits: [How it works](docs/how-it-works.md).
+Details and known limits are in [How it works](docs/how-it-works.md).
 
 ## Uninstall
 
@@ -132,47 +171,28 @@ dsh plugin --profile web remove dsh-think-budget
 ```
 
 For a source install, delete the `- insert:` block from your patch file. The
-plugin writes no persistent state, so deleting is deleting.
+plugin keeps no state, so removing it leaves nothing behind.
 
 ## FAQ
 
-**Nothing happened after installing.** Expected — it only speaks up when the
-model actually crosses a line. To see whether it is running, add a `logPath` as
-described above.
+**Nothing happened after installing.** That is normal. It stays quiet until the
+model crosses a line. To see whether it is running, turn on a log as described
+above.
 
-**Does it slow sessions down?** No. It counts characters as the stream goes by;
-no extra model calls, nothing blocking.
+**Does it slow sessions down?** No. It counts characters as they stream past.
 
-**Can it coexist with other plugins?** Yes. It uses only dsh's public extension
-points, so it does not interfere with what you already run.
+**Can it run alongside other plugins?** Yes. It only uses dsh's public extension
+points.
 
-## Configuration
+## More docs
 
-| Field | Default | Meaning |
-|---|---|---|
-| `enabled` | `true` | Master switch. When false, no listener is installed at all |
-| `maxReasoningCharsPerStep` | `4000` | Per-step reasoning budget; only counted when the step wrote no prose. `0` disables this rule |
-| `maxStepsWithoutConclusion` | `3` | Consecutive steps without prose before one is demanded. `0` disables this rule |
-| `minConclusionChars` | `12` | How long (after trimming) counts as prose. Keeps "let me take a look" from clearing the counter |
-| `cooldownSteps` | `2` | Minimum step gap between two reminders of the same kind |
-| `maxRemindersPerTurn` | `5` | Reminder cap per turn; once reached it stays quiet until the next user message |
-| `includeSubagents` | `true` | Whether sub-agents are governed too. False watches top-level agents only |
-| `systemPromptSection` | `true` | Whether the pacing section is registered in the system prompt |
-| `downgradeReasoningEffort` | `''` | Reasoning effort to switch to when a line is crossed. Empty means never (**recommended**) |
-| `reminderTag` | `思考节拍` | The label inside the brackets of every reminder |
-| `logPath` | `''` | Event log (JSONL). Empty means nothing is recorded |
+- [工作原理](docs/how-it-works.md): judging rules in detail, the dsh interfaces it uses, source map, known limits
+- [开发与测试](docs/development.md): source loading vs compiled output, build, tests
+- [排查](docs/troubleshooting.md): log fields, tuning thresholds, what to do when two copies are installed
 
-## Going deeper
-
-The detailed internals are written in Chinese under `docs/`:
-
-- [工作原理](docs/how-it-works.md) — judging details, the dsh events it uses, source map, known limits
-- [开发与测试](docs/development.md) — source vs compiled loading, build, tests
-- [排查](docs/troubleshooting.md) — log fields, tuning, running two copies
-
-You can also just tell an AI agent: "install it by following the README at
-https://github.com/superSizzzz/dsh-think-budget" — it can read.
+You can also tell an AI agent: "install it by following the README at
+https://github.com/superSizzzz/dsh-think-budget". It can read.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT, see [LICENSE](./LICENSE).

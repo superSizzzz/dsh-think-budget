@@ -2,41 +2,49 @@
 
 [English](README.en.md) | 中文
 
-dsh 干活时会闷头想很久，屏幕上半天不出现一个字 —— 你分不清它是在推进还是卡死了。
-这个插件给它一个节拍：单步思考有字数预算，连续几步没写出正文就提醒它一句。
+dsh 想得久的时候，屏幕上会半天不出一个字，你在旁边看着也不知道它是在
+推进还是卡住了。
 
-## 装它
+这个插件给它加了个节拍：单步思考有字数上限，连着几步没写正文就提醒一句。
+
+## 安装
 
 ```powershell
 dsh plugin --profile web add github:superSizzzz/dsh-think-budget
 ```
 
-一条命令，装完即生效 —— dsh 会读包里的 `dsh.bundle.patch` 自动并入 profile。
+一条命令就装好了。dsh 会读包里的 `dsh.bundle.patch` 自动并入当前 profile，
+不用你手写配置。
+
+不想要了：
 
 ```powershell
-dsh plugin --profile web remove dsh-think-budget    # 卸载
+dsh plugin --profile web remove dsh-think-budget
 ```
 
 | 项 | 要求 |
 |---|---|
 | dsh | ≥ 0.1.7-rc.2 |
 | Node | ≥ 22.6 |
-| profile | 不限 —— web / tui / headless 都能装 |
-| 模型 | 不限 —— 只有会产出思考过程的路由才会触发「思考超预算」那条规则 |
+| profile | 不限，web / tui / headless 都能装 |
+| 模型 | 不限。只有会产出思考过程的路由才会触发「思考超预算」那条规则 |
 
-换 `--profile` 后面的名字就能装到别的 profile，每个 profile 各装一次。
-想改源码、让改动立刻热重载，见[开发与测试](docs/development.md)。
+要装到别的 profile，把 `--profile` 后面的名字换掉，每个 profile 各装一次。
 
-## 它怎么管
+如果你是想改代码，走源码方式更方便，见[开发与测试](docs/development.md)。
 
-两个触发条件，满足任一就出手：
+## 插件能力
 
-- **连着几步没写正文** —— 默认 3 步。「正文」指对话里看得见的那部分，思考过程不算：
-  你看不见的东西不算交付。
-- **单步思考太长** —— 默认 4000 字，且这一步同样没写正文。
+它管两件事，满足任意一条就会出手。
 
-做法分两层：平时往系统提示里写一段节拍规则让模型自己配合，越界时直接往会话里注入
-一条提醒。模型收到的就是这段：
+一是连着几步没写正文，默认 3 步。这里的「正文」指你在对话里看得见的那部分，
+模型的思考过程不算：你看不见的东西，对你来说就等于没发生。
+
+二是单步思考太长，默认 4000 字。这条还要求那一步同样没写正文。要是思考得久
+但把结论说出来了，它不会去打扰。
+
+做法分两层。平时它往系统提示里写一段节拍规则，让模型自己注意着点；真越界了
+就往会话里塞一条提醒。模型收到的是这么一段：
 
 ```text
 【思考节拍】你最近连续 3 次回复都没有写正文，只有思考和工具调用。
@@ -45,47 +53,65 @@ dsh plugin --profile web remove dsh-think-budget    # 卸载
 写完之后如果还需要继续，再继续调用工具。
 ```
 
-文案故意留了退路：「还不确定」也算结论。只逼「必须说点什么」、不逼「必须想明白」——
-否则模型为了凑数会编一个假答案，那是这类插件最容易帮倒忙的地方。
+提醒里那句「还不确定也算结论」是有意留的口子。它只要求模型说点什么，不要求
+它想明白，不然模型为了凑数会编个假答案出来，那反而更糟。
 
-## 用起来是什么样
+## 使用
 
-下面两行是插件自己记的账，来自真实对话（会话 id 已省略）。
+装完不用做任何事，它自己就跑起来了。也不会拖慢会话，只是在流经过时数一下
+字数，不额外调用模型。
 
-第一条：模型连续 3 步只思考和调工具、正文 0 字，插件随即要求它先给结论。
+平时它是安静的，只有模型真的越界才出声。下面两条是真实跑出来的记录
+（会话 id 省略了）：
 
 ```json
 {"at":"2026-09-26T09:15:30.056Z","kind":"no-conclusion-streak","streak":3,"reasoningChars":1840,"visibleChars":0,"toolCalls":2}
 ```
 
-第二条：同一场对话稍后，单步思考到 4432 字、依然没写正文。
-
 ```json
 {"at":"2026-09-26T09:43:38.767Z","kind":"reasoning-over-budget","streak":1,"reasoningChars":4432,"visibleChars":0,"toolCalls":2}
 ```
 
-两次都当场见效：模型的下一条回复就带上了正文。
+第一条是连着 3 步只思考和调工具、正文一个字没有，它要求模型先给结论。第二条
+是同一场对话后面，单步思考到 4432 字还是没写正文。
 
-## 调它
+两次都当场见效，模型下一条回复就带了正文。
 
-配置写在装它的那段 patch 里 —— 没有独立配置文件，也没有设置界面。要改松紧，往
-`~/.dsh/profiles/web/cordis.patch.yml` 末尾追加一段（只写要改的字段）：
+## 配置思考步数
+
+配置就写在装它的那段 patch 里。没有单独的配置文件，也没有设置界面。
+
+想调松紧，往 `~/.dsh/profiles/web/cordis.patch.yml` 末尾加一段，只写你要改的
+字段就行：
 
 ```yaml
 - id: think-budget
   config:
-    maxStepsWithoutConclusion: 5      # 连续几步没正文才提醒，默认 3
-    maxReasoningCharsPerStep: 8000    # 单步思考字数预算，默认 4000
+    maxStepsWithoutConclusion: 5      # 连着几步没正文才提醒，默认 3
+    maxReasoningCharsPerStep: 8000    # 单步思考字数上限，默认 4000
 ```
 
-保存即热重载，不用重启 dsh。字段填错会在重载时报清晰的错误，不会静默退回默认值。
+保存就生效，不用重启 dsh。字段填错了重载时会直接报错，不会悄悄退回默认值。
 
-想更严：`maxStepsWithoutConclusion: 2`、`maxReasoningCharsPerStep: 2500`。
-全部字段见[配置速查](#配置速查)。
+想更严就 `maxStepsWithoutConclusion: 2`、`maxReasoningCharsPerStep: 2500`。
 
-### 怎么确认它真的在管事
+| 字段 | 默认值 | 含义 |
+|---|---|---|
+| `enabled` | `true` | 总开关。false 时一个监听器都不装 |
+| `maxReasoningCharsPerStep` | `4000` | 单步思考字数上限，只在没写正文时才算数。`0` 关掉这一条 |
+| `maxStepsWithoutConclusion` | `3` | 连着多少步没写正文就要一条。`0` 关掉这一条 |
+| `minConclusionChars` | `12` | 去空白后多长算「正文」，用来挡住「让我看看」这种过渡语 |
+| `cooldownSteps` | `2` | 同一种提醒两次之间至少隔几步 |
+| `maxRemindersPerTurn` | `5` | 一轮最多提醒几条，到顶就安静等下一条用户消息 |
+| `includeSubagents` | `true` | 是否也管子 agent，false 只盯顶层 |
+| `systemPromptSection` | `true` | 是否往系统提示里写那段节拍规则 |
+| `downgradeReasoningEffort` | `''` | 越界时降推理强度。留空 = 不用，**建议保持留空** |
+| `reminderTag` | `思考节拍` | 提醒文案里方括号里的标签 |
+| `logPath` | `''` | 事件日志路径，留空 = 不记 |
 
-给配置加一行日志路径：
+## 日志查看
+
+插件没有界面。想知道它有没有在干活，给它开个日志：
 
 ```yaml
 - id: think-budget
@@ -93,23 +119,33 @@ dsh plugin --profile web remove dsh-think-budget    # 卸载
     logPath: 'D:/logs/think-budget.jsonl'
 ```
 
-那个文件随即出现一行 `{"event":"applied",…}`（里面是这次实际生效的配置）—— 有它
-就说明插件装上了。之后每次出手还会追加一行。
+开完那个文件里会立刻多出一行装载记录，`config` 字段是这次实际生效的配置，
+可以拿它核对配置有没有被读进去：
 
-一行都没有 = 插件没被加载，回头检查装它的命令有没有成功。
+```json
+{"at":"2026-01-01T00:00:00.000Z","event":"applied","node":"v26.5.0","headless":false,"config":{}}
+```
 
-## 它不碰什么
+之后每次出手也会往里追加一行：
+
+```json
+{"at":"...","sessionId":"...","kind":"no-conclusion-streak","streak":3,"reasoningChars":1284,"visibleChars":0,"toolCalls":2}
+```
+
+一行都没有，说明插件没装上，回去看看安装命令有没有报错。
+
+## 权限
 
 | | |
 |---|---|
 | 网络 | 不发任何请求 |
 | 命令 | 不执行任何命令 |
-| 工具 | 不加新工具、不改你的工具列表 |
+| 工具 | 不加新工具，也不动你的工具列表 |
 | 你的消息 | 不改写、不删除 |
-| 会话 | 只往里加消息；不取消轮次、不拦截步骤 |
-| 磁盘 | 唯一会碰的是 `logPath` 那个日志文件，默认关闭 |
+| 会话 | 只往里加消息，不取消轮次、不拦截步骤 |
+| 磁盘 | 只会碰 `logPath` 那个日志文件，默认还是关的 |
 
-完整的权限说明与已知限制见[工作原理](docs/how-it-works.md)。
+细节和已知限制写在[工作原理](docs/how-it-works.md)里。
 
 ## 卸载
 
@@ -117,40 +153,25 @@ dsh plugin --profile web remove dsh-think-budget    # 卸载
 dsh plugin --profile web remove dsh-think-budget
 ```
 
-源码方式装的，删掉补丁文件里那段 `- insert:` 即可。插件不写任何持久状态，删掉就是删掉。
+源码方式装的，把补丁文件里那段 `- insert:` 删掉就行。插件不写任何持久状态，
+删掉就干净了。
 
 ## 常见问题
 
-**装完没动静？** 正常 —— 只有模型真的越界时它才出声。想看它有没有在运行，按上面
-「怎么确认它真的在管事」加一行 `logPath`。
+**装完没反应？** 正常。它平时不出声，只有模型越界才说话。想看它有没有在跑，
+按上面「日志查看」开个日志。
 
-**会不会拖慢会话？** 不会。它只是在流经过时数一下字数，不额外调用模型、不阻塞。
+**会不会拖慢会话？** 不会，它就是数一下字数。
 
-**能和其他插件共存吗？** 能。用的都是 dsh 的公开扩展点，跟你现有的插件互不干扰。
+**能和其他插件一起用吗？** 能，用的都是 dsh 的公开扩展点。
 
-## 配置速查
+## 更多文档
 
-| 字段 | 默认值 | 含义 |
-|---|---|---|
-| `enabled` | `true` | 总开关。false 时一个监听器都不装 |
-| `maxReasoningCharsPerStep` | `4000` | 单步思考字符预算；只在「这一步没写正文」时算数。`0` 关掉这一项 |
-| `maxStepsWithoutConclusion` | `3` | 连续多少步没写正文就强制要一条。`0` 关掉这一项 |
-| `minConclusionChars` | `12` | 去空白后多长算「结论」。挡住「让我看看」这类过渡语 |
-| `cooldownSteps` | `2` | 同一种提醒两次之间的最小步数间隔 |
-| `maxRemindersPerTurn` | `5` | 单轮提醒条数上限；到顶就闭嘴等下一条用户消息 |
-| `includeSubagents` | `true` | 是否也管子 agent。false 时只盯顶层 agent |
-| `systemPromptSection` | `true` | 是否注册系统提示里的「思考节拍」段落 |
-| `downgradeReasoningEffort` | `''` | 越界时的推理强度降档值。空 = 不用（**推荐保持空**） |
-| `reminderTag` | `思考节拍` | 提醒文案里方括号里的标签 |
-| `logPath` | `''` | 事件日志（JSONL）。空 = 不记 |
+- [工作原理](docs/how-it-works.md)：判定规则的细节、用到的 dsh 接口、实现地图、已知限制
+- [开发与测试](docs/development.md)：源码加载和编译产物的区别、构建、测试
+- [排查](docs/troubleshooting.md)：日志字段、调阈值、装了两份怎么办
 
-## 想深入
-
-- [工作原理](docs/how-it-works.md) —— 判定细节、用到的 dsh 事件面、实现地图、已知限制
-- [开发与测试](docs/development.md) —— 源码加载 vs 编译产物、构建、三个测试
-- [排查](docs/troubleshooting.md) —— 日志字段、调阈值、装了两份怎么办
-
-也可以直接对 AI agent 说一句：「照 https://github.com/superSizzzz/dsh-think-budget
+也可以直接跟 AI agent 说一句「照 https://github.com/superSizzzz/dsh-think-budget
 的 README 帮我装上」，它读得懂。
 
 ## 许可
